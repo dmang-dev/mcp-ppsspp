@@ -205,8 +205,23 @@ export class PpssppClient {
     event: string,
     params: Record<string, unknown> = {},
   ): Promise<T> {
+    // Auto-(re)connect on demand.  Previously a one-shot start() at server
+    // boot meant that if PPSSPP wasn't running when the MCP server spawned
+    // (or the user closed and reopened PPSSPP mid-session), every tool call
+    // forever after returned "did you start() the client?" with no way to
+    // recover short of restarting the MCP server.  Now: if we're not
+    // connected, try to connect right here; if the connection attempt fails,
+    // throw a tool-call-shaped error the MCP client can surface.
     if (!this.isConnected()) {
-      throw new Error("PPSSPP not connected — did you start() the client?");
+      try {
+        await this.start();
+      } catch (err) {
+        throw new Error(
+          `PPSSPP not reachable at ${this.describeTarget()}: ${(err as Error).message}.  ` +
+          `Make sure PPSSPP is running with "Allow remote debugger" enabled in ` +
+          `Settings → Tools → Developer Tools.`,
+        );
+      }
     }
     return new Promise<T>((resolve, reject) => {
       const ticket = `t${this.nextTicket++}`;
