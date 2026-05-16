@@ -37,6 +37,6 @@ jobs:
         run: |
           head -1 dist/index.js | grep -q '^#!/usr/bin/env node$'
           test -f dist/index.js
-          test -f dist/bizhawk.js
+          test -f dist/ppsspp.js
           test -f dist/tools.js
           echo "build artifacts OK"
