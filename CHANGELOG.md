@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-05-16
+
+Auto-reconnect now covers fire-and-forget commands too. Previously
+`call()` would lazy-reconnect if PPSSPP had been closed and reopened,
+but `fireAndForget()` (used by pause/resume/screenshot) still threw the
+old "PPSSPP not connected — did you start() the client?" error,
+leaving those tools broken across PPSSPP restarts until the MCP client
+itself restarted.
+
+### Fixed
+
+- **`fireAndForget()` now auto-reconnects** — extracted the lazy
+  connection guard from `call()` into a shared `ensureConnected()`
+  helper, then routed `fireAndForget()` through it too. `ppsspp_pause`,
+  `ppsspp_resume`, and `ppsspp_screenshot` (which internally uses
+  fire-and-forget for the pause/capture/resume bracket) now survive a
+  PPSSPP close-and-relaunch without needing the MCP server itself to
+  restart. Same memoized-`readyPromise` safety as before: concurrent
+  callers share a single underlying connect attempt.
+
+### Changed
+
+- **`fireAndForget()` is now `async`** (returns `Promise<void>`
+  instead of `void`). All in-tree callers in `src/tools.ts` and
+  `scripts/smoke.cjs` updated to `await` it. External callers (if
+  any) must add `await` — but this package's `PpssppClient` is not
+  documented as a public API, so no real consumers should be affected.
+
+[0.1.2]: https://github.com/dmang-dev/mcp-ppsspp/releases/tag/v0.1.2
+
 ## [0.1.1] - 2026-05-16
 
 Three real bugs surfaced by the first live test against PPSSPP v1.20.3 +
@@ -92,5 +122,5 @@ Initial public release.
   one MIPS instruction, not one rendered frame). For frame stepping,
   set a breakpoint at the vblank handler and resume.
 
-[Unreleased]: https://github.com/dmang-dev/mcp-ppsspp/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/dmang-dev/mcp-ppsspp/compare/v0.1.2...HEAD
 [0.1.0]: https://github.com/dmang-dev/mcp-ppsspp/releases/tag/v0.1.0

@@ -78,7 +78,7 @@ if (!PORT) {
   // 5. screenshot — must pause first (gpu.buffer.screenshot requires stepping)
   console.log("\n=== gpu.buffer.screenshot (with auto-pause/resume) ===");
   try {
-    pp.fireAndForget("cpu.stepping");
+    await pp.fireAndForget("cpu.stepping");
     await pp.waitForState((s) => s.stepping === true);
     try {
       const r = await pp.call("gpu.buffer.screenshot", { type: "base64" });
@@ -95,7 +95,7 @@ if (!PORT) {
         console.log("  (no screenshot data: " + JSON.stringify(r).slice(0, 200) + ")");
       }
     } finally {
-      try { pp.fireAndForget("cpu.resume"); await pp.waitForState((s) => s.stepping === false, { timeoutMs: 2000 }); } catch {}
+      try { await pp.fireAndForget("cpu.resume"); await pp.waitForState((s) => s.stepping === false, { timeoutMs: 2000 }); } catch {}
     }
   } catch (e) {
     console.log("  (skipped — " + e.message + ")");
@@ -104,7 +104,7 @@ if (!PORT) {
   // 5b. get all registers
   console.log("\n=== cpu.getAllRegs (first category only) ===");
   try {
-    pp.fireAndForget("cpu.stepping");
+    await pp.fireAndForget("cpu.stepping");
     await pp.waitForState((s) => s.stepping === true);
     try {
       const r = await pp.call("cpu.getAllRegs");
@@ -122,7 +122,7 @@ if (!PORT) {
         console.log("  (no categories)");
       }
     } finally {
-      try { pp.fireAndForget("cpu.resume"); await pp.waitForState((s) => s.stepping === false, { timeoutMs: 2000 }); } catch {}
+      try { await pp.fireAndForget("cpu.resume"); await pp.waitForState((s) => s.stepping === false, { timeoutMs: 2000 }); } catch {}
     }
   } catch (e) {
     console.log("  (skipped — " + e.message + ")");

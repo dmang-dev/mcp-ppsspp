@@ -154,6 +154,30 @@ export class PpssppClient {
   }
 
   /**
+   * Lazy connection guard used by both call() and fireAndForget(). If the
+   * socket isn't currently open, attempts to (re)connect, throwing a
+   * tool-call-shaped error on failure that points at the right fix.
+   *
+   * Why this is safe under concurrent callers: start() is memoized by
+   * `readyPromise` — multiple in-flight ensureConnected() calls share a
+   * single underlying connect attempt, and on failure start() resets
+   * readyPromise so the NEXT call can retry rather than getting a stale
+   * rejection forever.
+   */
+  private async ensureConnected(): Promise<void> {
+    if (this.isConnected()) return;
+    try {
+      await this.start();
+    } catch (err) {
+      throw new Error(
+        `PPSSPP not reachable at ${this.describeTarget()}: ${(err as Error).message}.  ` +
+        `Make sure PPSSPP is running with "Allow remote debugger" enabled in ` +
+        `Settings → Tools → Developer Tools.`,
+      );
+    }
+  }
+
+  /**
    * Send a fire-and-forget request — used for events that PPSSPP documents
    * as having "no immediate response" (e.g. cpu.stepping, cpu.resume).
    * Those events ack via an async broadcast (no ticket) some time later;
@@ -162,10 +186,8 @@ export class PpssppClient {
    * Caller usually follows this with `waitForState()` polling on cpu.status
    * (or game.status) to detect when the state change actually took effect.
    */
-  fireAndForget(event: string, params: Record<string, unknown> = {}): void {
-    if (!this.isConnected()) {
-      throw new Error("PPSSPP not connected — did you start() the client?");
-    }
+  async fireAndForget(event: string, params: Record<string, unknown> = {}): Promise<void> {
+    await this.ensureConnected();
     const msg = JSON.stringify({ event, ...params });
     if (process.env.MCP_PPSSPP_DEBUG) {
       process.stderr.write(`[trace] TX (fire&forget): ${msg}\n`);
@@ -205,24 +227,12 @@ export class PpssppClient {
     event: string,
     params: Record<string, unknown> = {},
   ): Promise<T> {
-    // Auto-(re)connect on demand.  Previously a one-shot start() at server
-    // boot meant that if PPSSPP wasn't running when the MCP server spawned
-    // (or the user closed and reopened PPSSPP mid-session), every tool call
-    // forever after returned "did you start() the client?" with no way to
-    // recover short of restarting the MCP server.  Now: if we're not
-    // connected, try to connect right here; if the connection attempt fails,
-    // throw a tool-call-shaped error the MCP client can surface.
-    if (!this.isConnected()) {
-      try {
-        await this.start();
-      } catch (err) {
-        throw new Error(
-          `PPSSPP not reachable at ${this.describeTarget()}: ${(err as Error).message}.  ` +
-          `Make sure PPSSPP is running with "Allow remote debugger" enabled in ` +
-          `Settings → Tools → Developer Tools.`,
-        );
-      }
-    }
+    // Auto-(re)connect on demand. PPSSPP can be launched, closed, relaunched
+    // at any point during the MCP server's lifetime; ensureConnected() will
+    // bring the socket back up (or throw a clear error if PPSSPP isn't
+    // reachable). Without this, a single failed connect at MCP boot would
+    // leave every subsequent tool call broken until MCP-client restart.
+    await this.ensureConnected();
     return new Promise<T>((resolve, reject) => {
       const ticket = `t${this.nextTicket++}`;
       const pending: PendingCmd = {

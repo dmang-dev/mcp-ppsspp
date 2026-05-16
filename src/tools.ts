@@ -482,12 +482,12 @@ export function registerTools(server: Server, pp: PpssppClient): void {
         // cpu.stepping is fire-and-forget per PPSSPP source ("No immediate
         // response. Once CPU is stepping, a 'cpu.stepping' event will be
         // sent."). Send it, then poll cpu.status until stepping=true.
-        pp.fireAndForget("cpu.stepping");
+        await pp.fireAndForget("cpu.stepping");
         await pp.waitForState((s) => s.stepping === true);
         return ok("Emulation paused");
       }
       case "ppsspp_resume": {
-        pp.fireAndForget("cpu.resume");
+        await pp.fireAndForget("cpu.resume");
         await pp.waitForState((s) => s.stepping === false);
         return ok("Emulation resumed");
       }
@@ -508,7 +508,7 @@ export function registerTools(server: Server, pp: PpssppClient): void {
         const statusBefore = await pp.call<{ stepping?: boolean; paused?: boolean }>("cpu.status");
         const wasStepping = !!statusBefore.stepping;
         if (!wasStepping) {
-          pp.fireAndForget("cpu.stepping");
+          await pp.fireAndForget("cpu.stepping");
           await pp.waitForState((s) => s.stepping === true);
         }
         try {
@@ -533,7 +533,7 @@ export function registerTools(server: Server, pp: PpssppClient): void {
         } finally {
           if (!wasStepping) {
             try {
-              pp.fireAndForget("cpu.resume");
+              await pp.fireAndForget("cpu.resume");
               await pp.waitForState((s) => s.stepping === false, { timeoutMs: 2000 });
             } catch { /* best-effort */ }
           }
