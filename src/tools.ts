@@ -318,10 +318,20 @@ const TOOLS: Tool[] = [
     name: "ppsspp_screenshot",
     description:
       "PURPOSE: Capture the current PSP framebuffer as a PNG-encoded screenshot. " +
-      "USAGE: For visual inspection or sequence documentation. Returns the framebuffer at PSP's native 480x272 resolution (or upscaled depending on PPSSPP's render settings). " +
-      "BEHAVIOR: No side effects — pure read of the GPU framebuffer. PPSSPP returns the image base64-encoded; this tool decodes and inlines it as an MCP image content block. Returns an error if no game is loaded. " +
+      "USAGE: For visual inspection or sequence documentation. Default 'render' source reads the active GPU render target — safer, native 480x272, what the PSP CPU asked the GPU to draw. Opt-in 'output' source reads PPSSPP's final composited output (post scaling/shaders) but can crash PPSSPP on games whose output framebuffer state confuses GPU_GetOutputFramebuffer (a real upstream bug — an _assert_ that should be a graceful failure). Prefer 'render' unless you specifically need the post-processed image. " +
+      "BEHAVIOR: Transparently pauses the CPU (cpu.stepping), captures, then resumes — both PPSSPP buffer events require stepping. If the emulator was already paused, leaves it paused. Returns an error if no game is loaded. The 'output' source CAN crash PPSSPP on certain games; if it does, MCP auto-reconnects to the relaunched PPSSPP cleanly. " +
       "RETURNS: Text confirmation + inline PNG image block.",
-    inputSchema: { type: "object", properties: {} },
+    inputSchema: {
+      type: "object",
+      properties: {
+        source: {
+          type: "string",
+          enum: ["render", "output"],
+          description: "Which GPU buffer to capture. 'render' (default) reads the current render target via gpu.buffer.renderColor — native PSP 480x272, safer on homebrew/edge-case games. 'output' reads the final composited framebuffer via gpu.buffer.screenshot — post-processed (matches what's on screen) but can crash PPSSPP on games where GPU_GetOutputFramebuffer trips its null-buf assertion.",
+        },
+      },
+      additionalProperties: false,
+    },
   },
 
   // ── CPU / debugger ─────────────────────────────────────────────────────
@@ -500,11 +510,25 @@ export function registerTools(server: Server, pp: PpssppClient): void {
         return ok("Game reset");
       }
       case "ppsspp_screenshot": {
-        // PPSSPP's gpu.buffer.screenshot requires CORE_STEPPING_CPU (or GPU
-        // stepping) state — it fails with "Neither CPU or GPU is stepping"
+        // PPSSPP's gpu.buffer.* events all require CORE_STEPPING_CPU (or GPU
+        // stepping) state — they fail with "Neither CPU or GPU is stepping"
         // otherwise. We transparently pause→capture→resume so callers can
         // screenshot any time without managing pause state. If the emulator
         // was already paused, we leave it paused.
+        //
+        // source='render' (default) uses gpu.buffer.renderColor → reads the
+        // active GPU render target. Safer: GPU_GetCurrentFramebuffer hits a
+        // different code path than the crash-prone GPU_GetOutputFramebuffer.
+        //
+        // source='output' uses gpu.buffer.screenshot → reads the final
+        // composited output (what's on screen, post scaling/shaders). Can
+        // CRASH PPSSPP on some games: upstream has an `_assert_(buf != nullptr)`
+        // after GPU_GetOutputFramebuffer that fires when the function returns
+        // true with a null buffer (observed on some homebrew). We can't catch
+        // a process abort from outside, but v0.1.2's auto-reconnect means MCP
+        // recovers when PPSSPP is relaunched.
+        const source = (p.source as string | undefined) ?? "render";
+        const event  = source === "output" ? "gpu.buffer.screenshot" : "gpu.buffer.renderColor";
         const statusBefore = await pp.call<{ stepping?: boolean; paused?: boolean }>("cpu.status");
         const wasStepping = !!statusBefore.stepping;
         if (!wasStepping) {
@@ -514,7 +538,7 @@ export function registerTools(server: Server, pp: PpssppClient): void {
         try {
           // type: "base64" returns the raw base64 payload; the default "uri"
           // returns a "data:image/png;base64,..." prefix which we'd have to strip.
-          const r = await pp.call<{ base64?: string; uri?: string }>("gpu.buffer.screenshot", { type: "base64" });
+          const r = await pp.call<{ base64?: string; uri?: string }>(event, { type: "base64" });
           let b64 = r.base64;
           if (!b64 && r.uri) {
             // Belt-and-suspenders: if PPSSPP returned a URI anyway, strip the prefix.
@@ -522,11 +546,11 @@ export function registerTools(server: Server, pp: PpssppClient): void {
             if (m) b64 = m[1];
           }
           if (!b64) {
-            throw new Error("PPSSPP did not return screenshot data (no game loaded?)");
+            throw new Error(`PPSSPP did not return screenshot data from ${event} (no game loaded, or framebuffer not readable?)`);
           }
           return {
             content: [
-              { type: "text" as const, text: "Screenshot captured." },
+              { type: "text" as const, text: `Screenshot captured (source: ${source}, event: ${event}).` },
               { type: "image" as const, data: b64, mimeType: "image/png" },
             ],
           };

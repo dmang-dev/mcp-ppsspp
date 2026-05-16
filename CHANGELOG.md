@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-05-16
+
+Screenshot default switched to the safer GPU readback path after a
+real PPSSPP crash on a homebrew. Root cause is upstream
+(`_assert_(buf != nullptr)` in `GPUBufferSubscriber.cpp` that
+should be a graceful `req.Fail`); we can't catch a process abort
+from outside, but we can stop steering callers into the
+crash-prone code path by default.
+
+### Changed
+
+- **`ppsspp_screenshot` now defaults to `gpu.buffer.renderColor`**
+  (reads the active GPU render target via
+  `GPU_GetCurrentFramebuffer(GPU_DBG_FRAMEBUF_RENDER)`) instead of
+  `gpu.buffer.screenshot` (which reads PPSSPP's final composited
+  output via the crash-prone `GPU_GetOutputFramebuffer`). The
+  render target is the actual rendered scene at PSP-native
+  480×272, before PPSSPP's post-processing (scaling, shaders).
+  For agent-vision use cases this is identical content; for
+  matching what's on your monitor you'd want the post-processed
+  output.
+- **New `source` parameter on `ppsspp_screenshot`** (enum
+  `'render' | 'output'`, default `'render'`) lets callers opt
+  into the post-processed `gpu.buffer.screenshot` path when they
+  specifically need it. The tool description carries a clear
+  warning that `'output'` can crash PPSSPP on certain games.
+  If PPSSPP does crash, v0.1.2's auto-reconnect ensures MCP
+  recovers cleanly when PPSSPP is relaunched.
+
+### Known limitations
+
+- **`source: 'output'` can still crash PPSSPP** — this is an
+  upstream bug. Once the assertion in `GPUBufferSubscriber.cpp`
+  is converted to a `req.Fail` upstream, both sources will fail
+  gracefully. Tracking upstream.
+
+[0.1.3]: https://github.com/dmang-dev/mcp-ppsspp/releases/tag/v0.1.3
+
 ## [0.1.2] - 2026-05-16
 
 Auto-reconnect now covers fire-and-forget commands too. Previously
@@ -122,5 +160,5 @@ Initial public release.
   one MIPS instruction, not one rendered frame). For frame stepping,
   set a breakpoint at the vblank handler and resume.
 
-[Unreleased]: https://github.com/dmang-dev/mcp-ppsspp/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/dmang-dev/mcp-ppsspp/compare/v0.1.3...HEAD
 [0.1.0]: https://github.com/dmang-dev/mcp-ppsspp/releases/tag/v0.1.0
