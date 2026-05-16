@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: build (node ${{ matrix.node }} on ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [18, 20, 22]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install
+        run: npm ci --ignore-scripts
+
+      - name: Type-check & build
+        run: npm run build
+
+      - name: Verify shebang and bin
+        shell: bash
+        run: |
+          head -1 dist/index.js | grep -q '^#!/usr/bin/env node$'
+          test -f dist/index.js
+          test -f dist/bizhawk.js
+          test -f dist/tools.js
+          echo "build artifacts OK"

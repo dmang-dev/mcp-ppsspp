@@ -1,0 +1,51 @@
+{
+  "name": "mcp-ppsspp",
+  "version": "0.1.0",
+  "description": "MCP server for PPSSPP — drive PSP games through PPSSPP's built-in WebSocket debugger interface",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "mcp-ppsspp": "dist/index.js"
+  },
+  "files": [
+    "dist/",
+    "docs/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc && node -e \"import('node:fs').then(fs => fs.chmodSync('dist/index.js', 0o755))\"",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "prepare": "npm run build",
+    "inspector": "npx @modelcontextprotocol/inspector node dist/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dmang-dev/mcp-ppsspp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dmang-dev/mcp-ppsspp/issues"
+  },
+  "homepage": "https://github.com/dmang-dev/mcp-ppsspp#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.13",
+    "typescript": "^5.5.0"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ppsspp",
+    "psp",
+    "emulator",
+    "claude"
+  ]
+}
