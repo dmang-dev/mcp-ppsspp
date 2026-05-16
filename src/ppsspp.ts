@@ -103,6 +103,15 @@ export class PpssppClient {
           process.stderr.write(`[mcp-ppsspp] socket closed (code=${code}): ${reason.toString()}\n`);
           this.ready = false;
           this.ws = null;
+          // CRITICAL: clear readyPromise too. start() short-circuits on a
+          // truthy readyPromise — if we leave the old resolved promise in
+          // place after PPSSPP closes the socket, the NEXT ensureConnected()
+          // returns that stale promise immediately and skips reconnecting,
+          // leading to a null-deref on `this.ws!.send(...)`. Clearing it
+          // here forces start() to actually attempt a fresh connect next
+          // time. (Bug surfaced in v0.1.3 when MCP outlives a PPSSPP
+          // restart — only the *initial* connect was auto-reconnecting.)
+          this.readyPromise = null;
           // Fail all in-flight requests
           for (const p of this.inflight.values()) {
             p.reject(new Error("PPSSPP WebSocket closed mid-request"));

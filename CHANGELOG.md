@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-05-16
+
+Closes the auto-reconnect gap that v0.1.2 and v0.1.3 missed: the
+WebSocket close handler cleared `ws` and `ready` but **not** the
+memoized `readyPromise`. After PPSSPP was closed mid-session
+(taskkill, crash, user-quit), the next call would short-circuit on
+the stale resolved promise and crash on `this.ws!.send(...)` —
+the very "Cannot read properties of null (reading 'send')" error
+that v0.1.2's `ensureConnected()` was supposed to make impossible.
+
+In practice: v0.1.2/0.1.3 auto-reconnect worked for the *initial*
+connection, but if PPSSPP was up at MCP startup and later closed,
+the MCP server got wedged until restart. Surfaced live during an
+E2E test of v0.1.3.
+
+### Fixed
+
+- **`readyPromise` cleared in WebSocket close handler** — one-line
+  fix in `src/ppsspp.ts`. Now `start()` actually attempts a fresh
+  connect on the next call instead of returning a cached resolved
+  promise that points at a dead socket.
+
+### Added
+
+- **`scripts/verify-reconnect.cjs`** + `npm run verify:reconnect`
+  — regression test that exercises the bug specifically:
+  connects → pings → calls `ws.close()` to fire the close handler →
+  pings again. PASS if the second ping doesn't throw the null-deref
+  (i.e., `start()` didn't short-circuit on the stale promise).
+
+[0.1.4]: https://github.com/dmang-dev/mcp-ppsspp/releases/tag/v0.1.4
+
 ## [0.1.3] - 2026-05-16
 
 Screenshot default switched to the safer GPU readback path after a
@@ -160,5 +192,5 @@ Initial public release.
   one MIPS instruction, not one rendered frame). For frame stepping,
   set a breakpoint at the vblank handler and resume.
 
-[Unreleased]: https://github.com/dmang-dev/mcp-ppsspp/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/dmang-dev/mcp-ppsspp/compare/v0.1.4...HEAD
 [0.1.0]: https://github.com/dmang-dev/mcp-ppsspp/releases/tag/v0.1.0
