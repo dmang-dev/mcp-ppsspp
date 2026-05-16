@@ -154,13 +154,52 @@ export class PpssppClient {
   }
 
   /**
+   * Send a fire-and-forget request — used for events that PPSSPP documents
+   * as having "no immediate response" (e.g. cpu.stepping, cpu.resume).
+   * Those events ack via an async broadcast (no ticket) some time later;
+   * `call()` would hang waiting for a ticketed reply that never arrives.
+   *
+   * Caller usually follows this with `waitForState()` polling on cpu.status
+   * (or game.status) to detect when the state change actually took effect.
+   */
+  fireAndForget(event: string, params: Record<string, unknown> = {}): void {
+    if (!this.isConnected()) {
+      throw new Error("PPSSPP not connected — did you start() the client?");
+    }
+    const msg = JSON.stringify({ event, ...params });
+    if (process.env.MCP_PPSSPP_DEBUG) {
+      process.stderr.write(`[trace] TX (fire&forget): ${msg}\n`);
+    }
+    this.ws!.send(msg);
+  }
+
+  /**
+   * Poll cpu.status (which IS synchronous) every `intervalMs` until
+   * `predicate` returns true, then resolve. Times out after `timeoutMs`.
+   *
+   * Used to detect when fire-and-forget commands (cpu.stepping / cpu.resume)
+   * have actually taken effect, since they don't ticket-reply.
+   */
+  async waitForState(predicate: (status: { stepping?: boolean; paused?: boolean; pc?: number; ticks?: number }) => boolean, opts: { timeoutMs?: number; intervalMs?: number } = {}): Promise<void> {
+    const timeoutMs  = opts.timeoutMs  ?? 3000;
+    const intervalMs = opts.intervalMs ?? 50;
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const status = await this.call<{ stepping?: boolean; paused?: boolean; pc?: number; ticks?: number }>("cpu.status");
+      if (predicate(status)) return;
+      await new Promise(r => setTimeout(r, intervalMs));
+    }
+    throw new Error(`waitForState timed out after ${timeoutMs}ms`);
+  }
+
+  /**
    * Send a request and wait for the ticketed response. `event` is the
    * PPSSPP method name (e.g. "memory.read_u16"). `params` is merged into
    * the request object alongside `event` and `ticket`.
    *
    * The returned object is the FULL response (including `event` and
    * `ticket` fields); callers usually want a specific field like
-   * `uintValue` or `base64` — pull it from the result.
+   * `value` or `base64` — pull it from the result.
    */
   async call<T extends Record<string, unknown> = Record<string, unknown>>(
     event: string,

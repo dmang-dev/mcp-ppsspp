@@ -1,6 +1,6 @@
 {
   "name": "mcp-ppsspp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP server for PPSSPP — drive PSP games through PPSSPP's built-in WebSocket debugger interface",
   "license": "MIT",
   "type": "module",

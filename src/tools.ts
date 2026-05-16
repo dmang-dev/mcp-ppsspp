@@ -422,16 +422,16 @@ export function registerTools(server: Server, pp: PpssppClient): void {
       }
 
       case "ppsspp_read8": {
-        const r = await pp.call<{ uintValue: number }>("memory.read_u8", { address: a() });
-        return ok(`${addrHex(a())}: ${fmtHex(r.uintValue)}`);
+        const r = await pp.call<{ value: number }>("memory.read_u8", { address: a() });
+        return ok(`${addrHex(a())}: ${fmtHex(r.value)}`);
       }
       case "ppsspp_read16": {
-        const r = await pp.call<{ uintValue: number }>("memory.read_u16", { address: a() });
-        return ok(`${addrHex(a())}: ${fmtHex(r.uintValue)}`);
+        const r = await pp.call<{ value: number }>("memory.read_u16", { address: a() });
+        return ok(`${addrHex(a())}: ${fmtHex(r.value)}`);
       }
       case "ppsspp_read32": {
-        const r = await pp.call<{ uintValue: number }>("memory.read_u32", { address: a() });
-        return ok(`${addrHex(a())}: ${fmtHex(r.uintValue)}`);
+        const r = await pp.call<{ value: number }>("memory.read_u32", { address: a() });
+        return ok(`${addrHex(a())}: ${fmtHex(r.value)}`);
       }
       case "ppsspp_read_range": {
         const r = await pp.call<{ base64: string }>("memory.read", { address: a(), size: p.size });
@@ -479,11 +479,16 @@ export function registerTools(server: Server, pp: PpssppClient): void {
       }
 
       case "ppsspp_pause": {
-        await pp.call("cpu.stepping");
+        // cpu.stepping is fire-and-forget per PPSSPP source ("No immediate
+        // response. Once CPU is stepping, a 'cpu.stepping' event will be
+        // sent."). Send it, then poll cpu.status until stepping=true.
+        pp.fireAndForget("cpu.stepping");
+        await pp.waitForState((s) => s.stepping === true);
         return ok("Emulation paused");
       }
       case "ppsspp_resume": {
-        await pp.call("cpu.resume");
+        pp.fireAndForget("cpu.resume");
+        await pp.waitForState((s) => s.stepping === false);
         return ok("Emulation resumed");
       }
       case "ppsspp_step": {
@@ -495,25 +500,67 @@ export function registerTools(server: Server, pp: PpssppClient): void {
         return ok("Game reset");
       }
       case "ppsspp_screenshot": {
-        const r = await pp.call<{ base64?: string }>("gpu.buffer.screenshot");
-        if (!r.base64) {
-          throw new Error("PPSSPP did not return screenshot data (no game loaded?)");
+        // PPSSPP's gpu.buffer.screenshot requires CORE_STEPPING_CPU (or GPU
+        // stepping) state — it fails with "Neither CPU or GPU is stepping"
+        // otherwise. We transparently pause→capture→resume so callers can
+        // screenshot any time without managing pause state. If the emulator
+        // was already paused, we leave it paused.
+        const statusBefore = await pp.call<{ stepping?: boolean; paused?: boolean }>("cpu.status");
+        const wasStepping = !!statusBefore.stepping;
+        if (!wasStepping) {
+          pp.fireAndForget("cpu.stepping");
+          await pp.waitForState((s) => s.stepping === true);
         }
-        return {
-          content: [
-            { type: "text" as const, text: "Screenshot captured." },
-            { type: "image" as const, data: r.base64, mimeType: "image/png" },
-          ],
-        };
+        try {
+          // type: "base64" returns the raw base64 payload; the default "uri"
+          // returns a "data:image/png;base64,..." prefix which we'd have to strip.
+          const r = await pp.call<{ base64?: string; uri?: string }>("gpu.buffer.screenshot", { type: "base64" });
+          let b64 = r.base64;
+          if (!b64 && r.uri) {
+            // Belt-and-suspenders: if PPSSPP returned a URI anyway, strip the prefix.
+            const m = /^data:image\/png;base64,(.*)$/.exec(r.uri);
+            if (m) b64 = m[1];
+          }
+          if (!b64) {
+            throw new Error("PPSSPP did not return screenshot data (no game loaded?)");
+          }
+          return {
+            content: [
+              { type: "text" as const, text: "Screenshot captured." },
+              { type: "image" as const, data: b64, mimeType: "image/png" },
+            ],
+          };
+        } finally {
+          if (!wasStepping) {
+            try {
+              pp.fireAndForget("cpu.resume");
+              await pp.waitForState((s) => s.stepping === false, { timeoutMs: 2000 });
+            } catch { /* best-effort */ }
+          }
+        }
       }
 
       case "ppsspp_get_registers": {
-        const r = await pp.call<{ categories?: Array<{ name: string; registers: Array<{ name: string; uintValue: number }> }> }>("cpu.getAllRegs");
+        // PPSSPP's cpu.getAllRegs returns categories with PARALLEL arrays:
+        //   { categories: [{ name, registerNames: [...], uintValues: [...], floatValues: [...] }] }
+        // Not an array of {name, value} objects as I first assumed.
+        const r = await pp.call<{
+          categories?: Array<{
+            name: string;
+            registerNames?: string[];
+            uintValues?: number[];
+            floatValues?: string[];
+          }>;
+        }>("cpu.getAllRegs");
         const lines: string[] = [];
         for (const cat of r.categories ?? []) {
           lines.push(`── ${cat.name} ──`);
-          for (const reg of cat.registers) {
-            lines.push(`  ${reg.name.padEnd(8)} = ${addrHex(reg.uintValue)}`);
+          const names = cat.registerNames ?? [];
+          const vals  = cat.uintValues ?? [];
+          for (let i = 0; i < Math.max(names.length, vals.length); i++) {
+            const nm = names[i] ?? `r${i}`;
+            const v  = vals[i];
+            lines.push(`  ${nm.padEnd(8)} = ${v !== undefined ? addrHex(v) : "(unavailable)"}`);
           }
         }
         return ok(lines.join("\n") || "(no registers returned)");
