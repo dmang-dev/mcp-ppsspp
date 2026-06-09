@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`ppsspp_set_register`** — write a single MIPS Allegrex register (GPR, PC,
+  HI/LO, or FPU) via PPSSPP's `cpu.setReg`. The write counterpart to
+  `ppsspp_get_registers`: redirect execution (`pc`), patch a return value
+  (`v0`) or argument (`a0`-`a3`), etc. `value` accepts a JSON integer or a
+  string for hex/float/special (`'0x1F'`, `'1.5'`, `'nan'`) forms. Closes the
+  register-write half of the completeness gap flagged on the Glama profile.
+
+### Note
+
+- Savestate save/load (the other half of the flagged gap) remains
+  **out of scope**: PPSSPP's WebSocket debugger exposes no savestate API
+  (no `savestate.*` event group), so there is nothing to wrap. Use PPSSPP's
+  F1-F8 save-slot keybinds.
+
 ## [0.1.4] - 2026-05-16
 
 Closes the auto-reconnect gap that v0.1.2 and v0.1.3 missed: the
