@@ -4,6 +4,10 @@
 [![npm downloads](https://img.shields.io/npm/dm/mcp-ppsspp.svg)](https://www.npmjs.com/package/mcp-ppsspp)
 [![CI](https://github.com/dmang-dev/mcp-ppsspp/actions/workflows/ci.yml/badge.svg)](https://github.com/dmang-dev/mcp-ppsspp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/npm/l/mcp-ppsspp.svg)](LICENSE)
+[![Snyk](https://snyk.io/test/npm/mcp-ppsspp/badge.svg)](https://snyk.io/test/npm/mcp-ppsspp)
+[![Socket](https://img.shields.io/badge/Socket-security-2F7BFF?logo=socket)](https://socket.dev/npm/package/mcp-ppsspp)
+[![Bundlephobia](https://img.shields.io/badge/bundlephobia-size-FF6B81)](https://bundlephobia.com/package/mcp-ppsspp)
+[![npmgraph](https://img.shields.io/badge/npmgraph-dependencies-2496ED)](https://npmgraph.js.org/?q=mcp-ppsspp)
 
 An [MCP](https://modelcontextprotocol.io) server that exposes [PPSSPP](https://www.ppsspp.org) — the PlayStation Portable emulator — to any MCP-compatible client (Claude Desktop, Claude Code, etc.) via PPSSPP's built-in WebSocket debugger interface.
 
