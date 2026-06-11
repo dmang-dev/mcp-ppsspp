@@ -29,7 +29,7 @@ The connection uses subprotocol `debugger.ppsspp.org` on PPSSPP's debugger port.
 ## Requirements
 
 - [PPSSPP](https://www.ppsspp.org/download) (recent version with WebSocket debugger — 1.7+)
-- **Node.js 18+**
+- **Node.js 22+**
 - "Allow remote debugger" enabled in PPSSPP
 
 ## Install
