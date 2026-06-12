@@ -1,6 +1,5 @@
 version: 2
 updates:
-  # npm dependencies (package.json + package-lock.json)
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
@@ -15,7 +14,6 @@ updates:
           - "minor"
           - "patch"
 
-  # Dockerfile base image (node:22-trixie-slim)
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
@@ -23,8 +21,11 @@ updates:
     commit-message:
       prefix: "build"
       include: "scope"
+    ignore:
+      - dependency-name: "node"
+        update-types:
+          - "version-update:semver-major"
 
-  # GitHub Actions used by ci.yml / release.yml
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
