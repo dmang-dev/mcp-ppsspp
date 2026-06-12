@@ -40,3 +40,17 @@ jobs:
           test -f dist/ppsspp.js
           test -f dist/tools.js
           echo "build artifacts OK"
+
+  ci-ok:
+    name: ci-ok
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    steps:
+      - name: Verify all matrix builds passed
+        run: |
+          if [ "${{ needs.build.result }}" != "success" ]; then
+            echo "matrix build did not fully succeed: ${{ needs.build.result }}"
+            exit 1
+          fi
+          echo "all matrix builds passed"
