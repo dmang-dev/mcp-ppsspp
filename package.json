@@ -36,7 +36,7 @@
   "homepage": "https://github.com/dmang-dev/mcp-ppsspp#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
-    "ws": "^8.18.0"
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
