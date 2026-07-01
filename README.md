@@ -147,6 +147,16 @@ npm install
 npm run dev      # tsc --watch — autobuilds on src/ changes
 ```
 
+## Debugging with the MCP Inspector
+
+Browse and call this server's tools interactively with the [MCP Inspector](https://github.com/modelcontextprotocol/inspector):
+
+```bash
+PPSSPP_PORT=<port> npm run inspector
+```
+
+Build first if you've edited `src/` since your last `npm install` (`npm run build`, or keep `npm run dev` running). `mcp-ppsspp` has no default port — read the active one off PPSSPP's **Developer Tools → Allow remote debugger** dialog and pass it as `PPSSPP_PORT`. `tools/list` works even without PPSSPP connected; *calling* a tool needs PPSSPP running with the remote debugger enabled.
+
 ## License
 
 [MIT](LICENSE)
