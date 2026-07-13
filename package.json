@@ -1,6 +1,6 @@
 {
   "name": "mcp-ppsspp",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "MCP server for PPSSPP — drive PSP games through PPSSPP's built-in WebSocket debugger interface",
   "license": "MIT",
   "type": "module",
@@ -36,12 +36,12 @@
   "homepage": "https://github.com/dmang-dev/mcp-ppsspp#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
-    "ws": "^8.18.0"
+    "ws": "^8.21.0"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^26.1.0",
     "@types/ws": "^8.5.13",
-    "typescript": "^5.5.0"
+    "typescript": "^7.0.2"
   },
   "keywords": [
     "mcp",

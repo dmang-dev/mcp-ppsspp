@@ -9,7 +9,7 @@
 # point a running BizHawk at it (--socket_ip / --socket_port flags + load
 # lua/bridge.lua in the Lua Console). See README.md.
 
-FROM node:22-slim
+FROM node:22-trixie-slim@sha256:4228fca437e45714a3ebd1d4ecd1dcc583cf79f5a940aa025e286b472d93b67c
 WORKDIR /app
 
 # Install dependencies. --ignore-scripts skips the `prepare` hook; we run the
