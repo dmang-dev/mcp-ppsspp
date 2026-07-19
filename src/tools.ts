@@ -345,6 +345,26 @@ const TOOLS: Tool[] = [
       "RETURNS: Multi-line text with all register names + hex values, grouped by class (GPR, FPU, special).",
     inputSchema: { type: "object", properties: {} },
   },
+  {
+    name: "ppsspp_set_register",
+    description:
+      "PURPOSE: Write a single MIPS Allegrex CPU register — set a GPR, PC, HI/LO, or FPU register to a new value. " +
+      "USAGE: The write counterpart to ppsspp_get_registers. Use during debugging to redirect execution (set `pc`), fix a return value (`v0`), patch an argument before a call (`a0`-`a3`), adjust the stack pointer (`sp`), or poke an FPU register. BEST DONE WHILE PAUSED (ppsspp_pause, or stopped at a breakpoint) — writing a register on a running CPU races the next instruction that overwrites it. Register names match ppsspp_get_registers output (GPRs zero/at/v0/v1/a0-a3/t0-t9/s0-s7/k0/k1/gp/sp/fp/ra, special pc/hi/lo, FPU f0-f31). " +
+      "BEHAVIOR: DESTRUCTIVE to CPU state — no undo (snapshot via ppsspp_get_registers first if you need the old value). Maps to PPSSPP's cpu.setReg. Returns an error if the register name is unknown or no game is loaded. " +
+      "RETURNS: Single line confirming the register and the value written.",
+    inputSchema: {
+      type: "object",
+      required: ["register", "value"],
+      properties: {
+        register: { type: "string", description: "Register name as shown by ppsspp_get_registers — e.g. 'pc', 'v0', 'a0', 'sp', 'ra', 'f0'. Case-insensitive per PPSSPP." },
+        value: {
+          type: ["integer", "string"],
+          description: "New value. A JSON integer for the common case (32-bit; encode signed values as two's-complement uint), or a string for hex ('0x1F'), float ('1.5'), or special ('nan','inf','-inf') forms — PPSSPP parses all of these.",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
 
   // ── Breakpoints ────────────────────────────────────────────────────────
 
@@ -588,6 +608,18 @@ export function registerTools(server: Server, pp: PpssppClient): void {
           }
         }
         return ok(lines.join("\n") || "(no registers returned)");
+      }
+
+      case "ppsspp_set_register": {
+        const reg = p.register as string;
+        const r = await pp.call<{ uintValue?: number; floatValue?: string }>(
+          "cpu.setReg",
+          { name: reg, value: p.value },
+        );
+        const confirmed = r.uintValue !== undefined
+          ? addrHex(r.uintValue)
+          : (r.floatValue !== undefined ? r.floatValue : String(p.value));
+        return ok(`Set ${reg} = ${confirmed}`);
       }
 
       case "ppsspp_breakpoint_add": {
