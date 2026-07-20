@@ -5,3 +5,6 @@ dist/
 .rstk/
 .scratch/
 *.png
+
+# Local agent context - not part of the repo or the published package.
+CLAUDE.md
