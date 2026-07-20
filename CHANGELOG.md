@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (no `savestate.*` event group), so there is nothing to wrap. Use PPSSPP's
   F1-F8 save-slot keybinds.
 
+## [0.1.5] - 2026-06-11
+
 ### Changed
 
 - **BREAKING: minimum Node version raised from >=18 to >=22.** Node 18 (EOL
@@ -32,6 +34,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   LTS lines are. CI matrix now tests Node 22 + 24, and workflow actions
   bumped to `actions/checkout@v5` / `actions/setup-node@v5` (the v4 actions'
   Node 20 runtime is deprecated by GitHub as of June 2026).
+- **Docker base image moved to `node:22-trixie-slim`** (Debian 13) from the
+  bookworm-based `node:22-slim`, whose `zlib1g` carries an unpatched
+  integer-overflow CVE. Stays on Node 22 LTS.
+- **README badges added** for Socket, Snyk, Bundlephobia, and npmgraph. The
+  Snyk badge is live; the other three are static deep-link badges because
+  their live image endpoints 403 or rate-limit and would render broken.
+
+### Security
+
+- **Transitive dependencies bumped to clear npm audit advisories** —
+  lockfile-only bump within existing semver ranges: `hono` to >=4.12.21
+  (GHSA-xrhx-7g5j-rcj5, GHSA-3hrh-pfw6-9m5x, GHSA-f577-qrjj-4474,
+  GHSA-2gcr-mfcq-wcc3) and `qs` to >=6.15.2 (GHSA-q8mj-m7cp-5q26). Both
+  arrive via `@modelcontextprotocol/sdk`'s HTTP-transport deps, which this
+  stdio server does not use at runtime. `npm audit` now reports 0
+  vulnerabilities.
 
 ## [0.1.4] - 2026-05-16
 
@@ -220,4 +238,5 @@ Initial public release.
 
 [Unreleased]: https://github.com/dmang-dev/mcp-ppsspp/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/dmang-dev/mcp-ppsspp/releases/tag/v0.2.0
+[0.1.5]: https://github.com/dmang-dev/mcp-ppsspp/releases/tag/v0.1.5
 [0.1.0]: https://github.com/dmang-dev/mcp-ppsspp/releases/tag/v0.1.0
