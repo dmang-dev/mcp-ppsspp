@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-19
+
 ### Added
 
 - **`ppsspp_set_register`** — write a single MIPS Allegrex register (GPR, PC,
@@ -216,5 +218,6 @@ Initial public release.
   one MIPS instruction, not one rendered frame). For frame stepping,
   set a breakpoint at the vblank handler and resume.
 
-[Unreleased]: https://github.com/dmang-dev/mcp-ppsspp/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/dmang-dev/mcp-ppsspp/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/dmang-dev/mcp-ppsspp/releases/tag/v0.2.0
 [0.1.0]: https://github.com/dmang-dev/mcp-ppsspp/releases/tag/v0.1.0
