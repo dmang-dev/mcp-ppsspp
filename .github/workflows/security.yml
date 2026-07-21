@@ -1,0 +1,149 @@
+name: Daily security & lockfile refresh
+
+# Two independent jobs:
+#   snyk      - report-only. Snyk's DB is consistently ahead of npm's, but its
+#               remediation advice has been wrong before (it reported "no
+#               remediation available" for GHSA-v2hh-gcrm-f6hx the day after
+#               fast-uri 3.1.4 shipped), so it never drives a fix here.
+#   lockfile  - the part that actually fixes things. `npm update` moves
+#               transitive deps to their newest release inside the ranges
+#               package.json already declares. That is what closes advisories
+#               like the fast-uri one, with no advisory database involved.
+
+on:
+  schedule:
+    - cron: '17 6 * * *' # daily, 06:17 UTC — off the hour to dodge peak queueing
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  snyk:
+    name: snyk scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - run: npm ci
+
+      - name: Snyk test
+        id: snyk
+        continue-on-error: true # findings must not fail the scheduled run
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          if [ -z "${SNYK_TOKEN}" ]; then
+            echo "::warning title=SNYK_TOKEN not set::Skipping Snyk scan. Add the SNYK_TOKEN repository secret to enable it."
+            exit 0
+          fi
+          npx --yes snyk@latest test --sarif-file-output=snyk.sarif
+
+      - name: Upload SARIF to code scanning
+        if: hashFiles('snyk.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk.sarif
+          category: snyk
+
+  lockfile:
+    name: lockfile freshness
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      # A PAT is required, for two separate reasons:
+      #   1. main requires the ci-ok check. enforce_admins is false, so a push
+      #      authenticated as the (admin) owner bypasses it; github-actions[bot]
+      #      is not an admin and would be rejected.
+      #   2. Commits pushed with GITHUB_TOKEN do not trigger workflows, so
+      #      ci.yml would never run on the resulting commit.
+      - uses: actions/checkout@v5
+        with:
+          token: ${{ secrets.AUTOMATION_TOKEN || github.token }}
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Snapshot current lockfile
+        run: cp package-lock.json /tmp/lock.before.json
+
+      - name: Refresh within declared semver ranges
+        run: npm update
+
+      - name: Classify version moves
+        id: gate
+        run: |
+          node .github/scripts/lockfile-gate.mjs /tmp/lock.before.json package-lock.json > /tmp/gate.json
+          cat /tmp/gate.json
+          {
+            echo "clean=$(node -p "require('/tmp/gate.json').clean")"
+            echo "moves=$(node -p "require('/tmp/gate.json').moves.length")"
+            echo "patch=$(node -p "require('/tmp/gate.json').patch.length")"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Guard — package.json must not have changed
+        run: |
+          if ! git diff --quiet -- package.json; then
+            echo "::error::npm update modified package.json; this job is lockfile-only. Aborting."
+            exit 1
+          fi
+
+      - name: Verify build against refreshed lockfile
+        if: steps.gate.outputs.moves != '0' && steps.gate.outputs.clean == 'true'
+        run: |
+          npm ci
+          npm run build
+
+      - name: Commit and push
+        if: steps.gate.outputs.moves != '0' && steps.gate.outputs.clean == 'true'
+        run: |
+          if [ -z "${{ secrets.AUTOMATION_TOKEN }}" ]; then
+            echo "::error title=AUTOMATION_TOKEN not set::A patch-level lockfile refresh is ready but cannot be pushed. main requires the ci-ok check and github-actions[bot] cannot bypass it. Add an AUTOMATION_TOKEN secret (fine-grained PAT, Contents: read/write)."
+            exit 1
+          fi
+          SUMMARY=$(node -p "require('/tmp/gate.json').patch.map(m=>m.name+' '+m.from+' -> '+m.to).join('\n')")
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "fix(deps): refresh lockfile to latest patch releases" \
+                     -m "${SUMMARY}" \
+                     -m "Automated patch-level refresh within the semver ranges package.json already declares. package.json is unchanged, so published consumers are unaffected."
+          git push origin HEAD:main
+
+      - name: Report non-patch updates for review
+        if: steps.gate.outputs.clean == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git checkout -- package-lock.json
+          TITLE="Dependency refresh needs review"
+          if [ -n "$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number')" ]; then
+            echo "An open issue already tracks this; not filing a duplicate."
+            exit 0
+          fi
+          BODY=$(node -e "
+            const g = require('/tmp/gate.json');
+            const rows = m => m.map(x => '- \`' + x.name + '\` ' + x.from + ' → ' + x.to + ' (' + x.level + ')').join('\n');
+            let s = 'The scheduled refresh found updates that are **not** patch-level, so they were not applied automatically.\n\n';
+            if (g.nonPatch.length) s += '### Version moves\n' + rows(g.nonPatch) + '\n\n';
+            if (g.added.length)   s += '### Packages added\n' + g.added.map(x => '- \`' + x.name + '\` ' + x.version).join('\n') + '\n\n';
+            if (g.removed.length) s += '### Packages removed\n' + g.removed.map(x => '- \`' + x.name + '\` ' + x.version).join('\n') + '\n\n';
+            s += 'Apply with \`npm update\` locally, verify, and push if the change looks right.';
+            console.log(s);
+          ")
+          gh issue create --title "$TITLE" --body "$BODY" --label dependencies 2>/dev/null \
+            || gh issue create --title "$TITLE" --body "$BODY"
