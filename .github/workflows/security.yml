@@ -39,7 +39,6 @@ jobs:
       - run: npm ci
 
       - name: Snyk test
-        id: snyk
         continue-on-error: true # findings must not fail the scheduled run
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
@@ -82,17 +81,36 @@ jobs:
         run: cp package-lock.json /tmp/lock.before.json
 
       - name: Refresh within declared semver ranges
-        run: npm update
-
-      - name: Classify version moves
         id: gate
         run: |
-          node .github/scripts/lockfile-gate.mjs /tmp/lock.before.json package-lock.json > /tmp/gate.json
+          set -uo pipefail
+
+          npm update
+          node .github/scripts/lockfile-gate.mjs /tmp/lock.before.json package-lock.json > /tmp/gate.full.json
+
+          # A single minor bump must not block legitimate patch updates - those are
+          # usually the security-relevant ones. If the full refresh is not clean,
+          # roll back and retry restricted to just the packages that moved
+          # patch-level, then re-gate that subset.
+          if [ "$(node -p "require('/tmp/gate.full.json').clean")" = "true" ]; then
+            cp /tmp/gate.full.json /tmp/gate.json
+          else
+            SUBSET=$(node -p "require('/tmp/gate.full.json').patch.map(m=>m.name).join(' ')")
+            git checkout -- package-lock.json
+            if [ -n "$SUBSET" ]; then
+              echo "Deferring non-patch updates; retrying with: $SUBSET"
+              npm update $SUBSET
+              node .github/scripts/lockfile-gate.mjs /tmp/lock.before.json package-lock.json > /tmp/gate.json
+            else
+              echo '{"moves":[],"patch":[],"nonPatch":[],"added":[],"removed":[],"clean":true}' > /tmp/gate.json
+            fi
+          fi
+
           cat /tmp/gate.json
           {
             echo "clean=$(node -p "require('/tmp/gate.json').clean")"
             echo "moves=$(node -p "require('/tmp/gate.json').moves.length")"
-            echo "patch=$(node -p "require('/tmp/gate.json').patch.length")"
+            echo "deferred=$(node -p "require('/tmp/gate.full.json').nonPatch.length")"
           } >> "$GITHUB_OUTPUT"
 
       - name: Guard — package.json must not have changed
@@ -124,26 +142,29 @@ jobs:
                      -m "Automated patch-level refresh within the semver ranges package.json already declares. package.json is unchanged, so published consumers are unaffected."
           git push origin HEAD:main
 
-      - name: Report non-patch updates for review
-        if: steps.gate.outputs.clean == 'false'
+      - name: Report deferred non-patch updates
+        if: steps.gate.outputs.deferred != '0'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          git checkout -- package-lock.json
-          TITLE="Dependency refresh needs review"
-          if [ -n "$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number')" ]; then
-            echo "An open issue already tracks this; not filing a duplicate."
-            exit 0
-          fi
+          TITLE="Dependency refresh: non-patch updates awaiting review"
+          EXISTING=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number')
           BODY=$(node -e "
-            const g = require('/tmp/gate.json');
-            const rows = m => m.map(x => '- \`' + x.name + '\` ' + x.from + ' → ' + x.to + ' (' + x.level + ')').join('\n');
-            let s = 'The scheduled refresh found updates that are **not** patch-level, so they were not applied automatically.\n\n';
-            if (g.nonPatch.length) s += '### Version moves\n' + rows(g.nonPatch) + '\n\n';
+            const g = require('/tmp/gate.full.json');
+            const applied = require('/tmp/gate.json');
+            let s = 'The scheduled refresh found updates that are **not** patch-level. They were left unapplied; the patch-level subset was applied separately.\n\n';
+            s += '### Deferred — needs review\n';
+            s += g.nonPatch.map(x => '- \`' + x.name + '\` ' + x.from + ' → ' + x.to + ' (' + x.level + ')').join('\n') + '\n\n';
             if (g.added.length)   s += '### Packages added\n' + g.added.map(x => '- \`' + x.name + '\` ' + x.version).join('\n') + '\n\n';
             if (g.removed.length) s += '### Packages removed\n' + g.removed.map(x => '- \`' + x.name + '\` ' + x.version).join('\n') + '\n\n';
-            s += 'Apply with \`npm update\` locally, verify, and push if the change looks right.';
+            s += '### Applied automatically this run\n';
+            s += (applied.patch.length ? applied.patch.map(x => '- \`' + x.name + '\` ' + x.from + ' → ' + x.to).join('\n') : '_none_') + '\n\n';
+            s += 'To take the deferred ones: \`npm update\` locally, verify, and push.';
             console.log(s);
           ")
-          gh issue create --title "$TITLE" --body "$BODY" --label dependencies 2>/dev/null \
-            || gh issue create --title "$TITLE" --body "$BODY"
+          if [ -n "$EXISTING" ]; then
+            echo "Updating existing issue #$EXISTING instead of filing a duplicate."
+            gh issue comment "$EXISTING" --body "$BODY"
+          else
+            gh issue create --title "$TITLE" --body "$BODY"
+          fi
