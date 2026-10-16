@@ -44,7 +44,7 @@ Or `npx -y mcp-ppsspp`.
 
 1. Launch PPSSPP, load any PSP ISO/EBOOT
 2. **Settings → Tools → Developer Tools → Allow remote debugger** (check the box)
-3. PPSSPP will show the active host:port (e.g. `ws://192.168.1.10:12345/debugger`)
+3. **Settings → Tools → Remote disc streaming → Settings → Local sever port** (the remote debugger and remote disc streaming use the same port)
 4. Note the port number — you'll set it as an environment variable for the MCP server
 
 ## Register with your MCP client
