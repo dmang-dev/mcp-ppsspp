@@ -52,7 +52,7 @@ Or `npx -y mcp-ppsspp`.
 ### Claude Code (CLI)
 
 ```bash
-claude mcp add ppsspp --scope user --env PPSSPP_PORT=12345 mcp-ppsspp
+claude mcp add ppsspp --scope user --env PPSSPP_PORT=12345 -- mcp-ppsspp
 ```
 
 Replace `12345` with your actual port. Verify:
